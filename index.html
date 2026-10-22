@@ -1,0 +1,1531 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Daily Time</title>
+<meta name="theme-color" content="#0f0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Daily Time">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<script>window.DT_WEB_VERSION = "2026.10.22.4";</script>
+<style>
+  /* Layout: a single punch-clock column; today on top, the pay period below, PTO and settings last. Dark-only, matching the user's GX setup. */
+  :root{
+    color-scheme: dark;
+    --bg:#0f0d12; --panel:#18151c; --panel2:#211d26; --line:#2f2a35;
+    --text:#eeebf1; --muted:#948d9c; --accent:#ff2d55; --accent2:#ff6b85;
+    --good:#3ddc97; --warn:#ffb020; --pto:#6aa8ff; --selbg:#2a151d; --onaccent:#ffffff;
+    --f-display:"Roboto Condensed","Segoe UI",system-ui,sans-serif;
+    --f-body:Roboto,"Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{background:var(--bg);color:var(--text)}
+  body{margin:0;font:15px/1.4 var(--f-body)}
+  .wrap{max-width:820px;margin:0 auto;padding-block:calc(14px + env(safe-area-inset-top, 0px)) calc(48px + env(safe-area-inset-bottom, 0px));padding-inline:16px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+  h1{font:700 20px var(--f-display);margin:0;letter-spacing:.5px;text-transform:uppercase}
+  h1 span{color:var(--accent)}
+  h1 small{font:500 12px var(--f-body);color:var(--muted);letter-spacing:0;text-transform:none;margin-left:6px}
+  h2{font:600 15px var(--f-display);margin:0;letter-spacing:.4px;text-transform:uppercase;text-wrap:balance}
+  .clock{font-variant-numeric:tabular-nums;color:var(--muted)}
+  .sync{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .sync i{width:7px;height:7px;border-radius:50%;background:var(--muted);display:inline-block}
+  .sync.ok i{background:var(--good)} .sync.saving i{background:var(--warn)} .sync.err i{background:var(--accent)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .between{justify-content:space-between}
+  .punches{display:grid;grid-template-columns:repeat(4,1fr) .8fr .8fr;gap:10px}
+  @media (max-width:680px){.punches{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .punch.pto.hol label{color:var(--good)}
+  .holTxt{color:var(--good)}
+  .noteRow{margin-top:10px}
+  .noteRow input{font-size:14px}
+  .dnote{font-size:12px;color:var(--muted);white-space:normal;max-width:22ch;overflow:hidden;text-overflow:ellipsis}
+  .note.warnTxt{color:var(--warn)}
+  .undo{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom, 0px));display:flex;align-items:center;gap:12px;
+    background:var(--panel2);border:1px solid var(--accent);color:var(--text);border-radius:10px;padding:8px 8px 8px 14px;max-width:calc(100% - 32px);z-index:5}
+  .undo[hidden]{display:none}
+  .undo button{border-color:var(--accent);color:var(--accent);font-weight:600;flex:none}
+  #histBody tr{cursor:pointer}
+  #histBody tr:hover td{background:var(--panel2)}
+  #histBody tr.cur td:first-child{color:var(--accent)}
+  .punch{min-width:0}
+  .punch label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.7px}
+  .punch.pto label{color:var(--pto)}
+  .punch .inrow{display:flex;gap:4px}
+  input,select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;
+    padding:9px 10px;font:inherit;width:100%;min-width:0;outline:none}
+  input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .punch input{font:600 19px var(--f-body);font-variant-numeric:tabular-nums;text-align:center}
+  .punch .res{font-size:12px;color:var(--muted);margin-top:4px;text-align:center;min-height:16px}
+  .punch .res.bad{color:var(--warn)}
+  button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;
+    padding:8px 12px;font:inherit;cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button:disabled{opacity:.5;cursor:default}
+  button.now{padding:6px 8px;font-size:12px;color:var(--muted);flex:none}
+  button.primary{background:var(--accent);border-color:var(--accent);color:var(--onaccent);font:700 16px var(--f-display);letter-spacing:.4px;text-transform:uppercase}
+  button.primary:hover{background:var(--accent2)}
+  button.danger{border-color:var(--accent);color:var(--accent)}
+  .big{padding:12px 20px}
+  @media (max-width:520px){ .actions{width:100%} .actions button{flex:1} }
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  @media (max-width:680px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .stat{background:var(--panel2);border-radius:10px;padding:12px;min-width:0}
+  .stat .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  .stat .v{font:600 26px var(--f-display);font-variant-numeric:tabular-nums;margin-top:2px}
+  .stat .s{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .stat.hero .v{color:var(--accent)}
+  .stat.over .v{color:var(--good)}
+  .stat.ptoS .v{color:var(--pto)}
+  .status{margin-top:10px;color:var(--muted);font-size:13px}
+  .status b{color:var(--text)}
+  .live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--good);margin-right:6px;animation:pulse 1.4s infinite}
+  @keyframes pulse{50%{opacity:.3}}
+  @media (prefers-reduced-motion:reduce){.live{animation:none}}
+  .bar{height:10px;background:var(--panel2);border-radius:6px;overflow:hidden;margin:12px 0 4px;display:flex}
+  .bar i{display:block;height:100%}
+  .bar .w{background:var(--accent)} .bar .p{background:var(--pto)}
+  .barlbl{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .tablewrap{overflow-x:auto;margin-top:12px}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;min-width:460px}
+  th,td{padding:7px 6px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+  td.num,th.num{text-align:right}
+  td .x{background:none;border:none;color:var(--muted);padding:2px 6px}
+  td .x:hover,td .x.arm{color:var(--accent)}
+  tr.click{cursor:pointer}
+  tr.click:hover td{background:var(--panel2)}
+  tr.sel td{background:var(--selbg)}
+  tr.sub td{color:var(--muted);font-size:12px;border-bottom:2px solid var(--line);white-space:normal}
+  tr.sub td.num{color:var(--text);font-weight:600}
+  .ptoTxt{color:var(--pto)}
+  .ot{color:var(--warn)}
+  .off{color:var(--muted)}
+  .banner{background:var(--panel2);border:1px solid var(--warn);color:var(--warn);border-radius:10px;padding:10px 12px;margin-bottom:14px;cursor:pointer}
+  details summary{cursor:pointer;color:var(--muted)}
+  .settings{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+  @media (max-width:680px){.settings{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .settings > div{min-width:0}
+  .settings label,.lbl{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
+  .days{display:flex;gap:4px;flex-wrap:wrap}
+  .days label{display:flex;align-items:center;gap:3px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-size:12px;color:var(--text);margin:0;cursor:pointer}
+  .days input{width:auto;margin:0}
+  .hint{font-size:12px;color:var(--muted);margin-top:10px;max-width:70ch}
+  .note{font-size:13px;color:var(--muted);margin-top:8px}
+  .toast{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom, 0px));left:50%;transform:translateX(-50%);background:var(--accent);color:var(--onaccent);
+    padding:8px 14px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:calc(100% - 32px)}
+  .toast.show{opacity:1}
+  .brk{margin-top:12px}
+  .brk[hidden]{display:none}
+  .brk .lbl{color:var(--pto);text-transform:uppercase;letter-spacing:.7px}
+  .brkrow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto 58px auto;gap:6px;align-items:center;margin-top:6px}
+  .brkrow input{text-align:center;font-variant-numeric:tabular-nums;padding:7px 6px}
+  .brkrow .dash{color:var(--muted)}
+  .brkrow .d{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+  .brkrow .d.bad{color:var(--warn)} .brkrow .d.run{color:var(--pto)}
+  .brkrow .x{background:none;border:none;color:var(--muted);padding:2px 6px}
+  .brkrow .x:hover,.brkrow .x.arm{color:var(--accent)}
+  button.onbreak{border-color:var(--pto);color:var(--pto)}
+  .punchrow{flex-wrap:nowrap}
+  @media (max-width:520px){ .punchrow{width:100%} .punchrow #punchBtn{flex:1;width:auto} }
+  .upd{border-color:var(--pto);color:var(--text)}
+  .upd b{color:var(--pto)}
+  .rem{display:grid;gap:8px;margin-top:6px}
+  .rem label{display:block;font-size:14px;color:var(--text);line-height:2.2;padding-left:26px;text-indent:-26px}
+  .rem input[type=checkbox]{width:18px;height:18px;margin:0 8px 0 0;vertical-align:middle}
+  .rem input[type=number]{display:inline-block;width:64px;padding:4px 6px;text-align:center;text-indent:0;vertical-align:middle}
+  .rem.off label:not(:first-child){opacity:.45}
+  #copyBox,#restoreBox{width:100%;margin-top:10px;font:13px var(--f-body);background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Daily <span>Time</span><small id="hdrVer"></small></h1>
+    <div class="row">
+      <input type="date" id="date" style="width:auto">
+      <div class="clock" id="clock"></div>
+    </div>
+  </header>
+
+  <div class="banner upd" id="updateBanner" hidden></div>
+  <div class="banner upd" id="installBanner" hidden>To keep Daily Time on your iPhone, tap <b>Share</b> then <b>Add to Home Screen</b>. Your hours stay on this phone.</div>
+  <div class="banner" id="missBanner" hidden></div>
+  <div class="banner" id="backupBanner" hidden></div>
+  <div class="banner" id="setupBanner" hidden>Set your <b>pay period start date</b> in Settings (bottom) so the 2-week totals line up with your real pay periods.</div>
+
+  <!-- TODAY -->
+  <div class="card">
+    <div class="punches" id="punches"></div>
+    <div class="noteRow"><label class="lbl" for="f_note">Note</label><input id="f_note" maxlength="200" autocomplete="off" placeholder="Optional, e.g. left early for the doctor"></div>
+    <div class="brk" id="brkWrap" hidden><span class="lbl">Breaks (not counted as worked time)</span><div id="brkList"></div></div>
+    <div class="row between" style="margin-top:14px">
+      <div class="row punchrow">
+        <button class="primary big" id="punchBtn">Punch</button>
+        <button class="big" id="breakBtn" title="Start or end a break; break time is left out of your hours">Start break</button>
+      </div>
+      <div class="row actions">
+        <button id="ptoDayBtn" title="Mark this whole day as PTO">PTO day</button>
+        <button id="holDayBtn" title="Mark this day as a paid holiday (doesn't use PTO)">Holiday</button>
+        <button id="copyBtn">Copy</button>
+        <button id="clearBtn">Clear day</button>
+      </div>
+    </div>
+    <textarea id="copyBox" rows="6" hidden readonly></textarea>
+    <div class="status" id="status"></div>
+    <div class="stats" style="margin-top:12px">
+      <div class="stat hero"><div class="k">Worked today</div><div class="v" id="sWorked">0.00</div><div class="s" id="sWorkedDec">hrs</div></div>
+      <div class="stat"><div class="k">Lunch &amp; breaks</div><div class="v" id="sLunch">—</div><div class="s" id="sLunchS"></div></div>
+      <div class="stat"><div class="k">Left today</div><div class="v" id="sLeft">—</div><div class="s" id="sLeftS"></div></div>
+      <div class="stat"><div class="k">Leave at</div><div class="v" id="sLeave">—</div><div class="s" id="sLeaveS"></div></div>
+    </div>
+  </div>
+
+  <!-- PAY PERIOD -->
+  <div class="card" id="ppCard">
+    <div class="row between">
+      <h2 id="ppTitle">Pay period</h2>
+      <div class="row">
+        <button id="prevPP" aria-label="Previous pay period">‹</button>
+        <button id="thisPP">Current</button>
+        <button id="nextPP" aria-label="Next pay period">›</button>
+      </div>
+    </div>
+    <div class="bar"><i class="w" id="barW"></i><i class="p" id="barP"></i></div>
+    <div class="barlbl"><span id="barL"></span><span id="barR"></span></div>
+
+    <div class="stats" style="margin-top:12px">
+      <div class="stat hero" id="stLeftPP"><div class="k">Left in period</div><div class="v" id="ppLeft">—</div><div class="s" id="ppLeftS"></div></div>
+      <div class="stat"><div class="k">Pace needed</div><div class="v" id="ppPace">—</div><div class="s" id="ppPaceS"></div></div>
+      <div class="stat" id="stLeftWk"><div class="k">Left this week</div><div class="v" id="wkLeft">—</div><div class="s" id="wkLeftS"></div></div>
+      <div class="stat"><div class="k">Week estimate</div><div class="v" id="wkEst">—</div><div class="s" id="wkEstS"></div></div>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Day</th><th>In</th><th>Out</th><th class="num">Worked</th><th class="num">PTO</th><th class="num">Total</th><th></th></tr></thead>
+        <tbody id="ppBody"></tbody>
+      </table>
+    </div>
+    <div class="row between" style="margin-top:10px;font-weight:600">
+      <span>Pay period total</span><span id="ppTotal">0.00 hrs</span>
+    </div>
+    <div class="row between" style="color:var(--muted);margin-top:4px">
+      <span id="ppBreak"></span><span id="ppPay"></span>
+    </div>
+  </div>
+
+  <!-- PTO -->
+  <div class="card">
+    <h2>PTO</h2>
+    <div class="stats" style="margin-top:12px">
+      <div class="stat ptoS"><div class="k">Balance now</div><div class="v" id="ptoNow">—</div><div class="s" id="ptoNowS"></div></div>
+      <div class="stat"><div class="k">After scheduled</div><div class="v" id="ptoAfter">—</div><div class="s" id="ptoAfterS"></div></div>
+      <div class="stat"><div class="k">Used this period</div><div class="v" id="ptoPP">0.00</div><div class="s">hrs</div></div>
+      <div class="stat"><div class="k">Used this year</div><div class="v" id="ptoYr">0.00</div><div class="s">hrs</div></div>
+    </div>
+    <div class="settings">
+      <div><label for="setPtoBal">Balance from Fuzion (hrs)</label><input type="number" id="setPtoBal" step="0.01" inputmode="decimal"></div>
+      <div><label for="setPtoAsOf">That balance was as of</label><input type="date" id="setPtoAsOf"></div>
+      <div><label for="setPtoAccr">Accrues per pay period (hrs)</label><input type="number" id="setPtoAccr" step="0.01" min="0" inputmode="decimal"></div>
+      <div><label for="setPtoGoal">Tell me when my balance reaches (hrs)</label><input type="number" id="setPtoGoal" step="1" min="0" inputmode="decimal" placeholder="optional"></div>
+    </div>
+    <div class="note" id="ptoWarn" hidden></div>
+    <div class="note" id="ptoGoalNote" hidden></div>
+    <div class="hint">Enter your balance once from Fuzion and the date it was current. After that, PTO you log here is subtracted and accruals are added each new pay period. Log future PTO on its date and it shows under "After scheduled".</div>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="card">
+    <details id="histDetails">
+      <summary>Pay period history</summary>
+      <div class="note" id="yrTotals"></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Pay period</th><th class="num">Worked</th><th class="num">PTO</th><th class="num">Holiday</th><th class="num">Overtime</th><th class="num">Total</th></tr></thead>
+          <tbody id="histBody"></tbody>
+        </table>
+      </div>
+      <div class="hint">Tap a pay period to open it above.</div>
+    </details>
+  </div>
+
+  <!-- BACKUP -->
+  <div class="card">
+    <h2>Backup</h2>
+    <div class="hint" style="margin-top:6px">Your hours are saved only on this phone. Uninstalling the app erases them, so send yourself a backup now and then (email, Google Drive, or a text to yourself).</div>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="backupBtn">Back up now</button>
+      <button id="csvBtn">Share as spreadsheet</button>
+    </div>
+    <div class="note" id="lastBackup"></div>
+    <div id="autoBox" hidden>
+      <div class="rem" style="margin-top:10px"><label><input type="checkbox" id="setAutoBackup"> Save a backup file every week to <b>Downloads/DailyTime</b></label></div>
+      <div class="row" style="margin-top:8px"><button id="saveFileBtn">Save a backup file now</button></div>
+      <div class="note" id="autoNote"></div>
+    </div>
+    <details id="restoreDetails" style="margin-top:12px">
+      <summary>Restore from a backup</summary>
+      <label class="lbl" for="restoreBox" style="margin-top:10px">Paste a backup here. A spreadsheet export from the PC version works too.</label>
+      <textarea id="restoreBox" rows="4" spellcheck="false"></textarea>
+      <label class="lbl" for="restoreFile" style="margin-top:8px">Or open a backup file (from Downloads/DailyTime, email, or Drive)</label>
+      <input type="file" id="restoreFile" accept=".json,.csv,.txt,application/json,text/plain,text/csv">
+      <div class="row" style="margin-top:8px"><button id="restoreBtn">Restore</button></div>
+    </details>
+    <div class="note" id="ioNote"></div>
+  </div>
+
+  <!-- UPDATES (only inside the Android app) -->
+  <div class="card" id="updCard" hidden>
+    <h2>App updates</h2>
+    <div class="hint" style="margin-top:6px">You have version <b id="updVer">?</b>. Each time you open the app it checks for a newer version. It downloads by itself and installs when you leave the app.</div>
+    <div class="row" style="margin-top:10px">
+      <button id="updCheck">Check now</button>
+    </div>
+    <div class="note" id="updNote"></div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="card">
+    <details id="setDetails">
+      <summary>Settings</summary>
+      <div class="settings">
+        <div style="grid-column:1 / -1"><label for="setPPType">Pay period</label><select id="setPPType">
+          <option value="biweekly">Every 2 weeks</option>
+          <option value="semimonthly" id="setPPTypeSemi">Twice a month (1st–15th, 16th–end)</option>
+        </select></div>
+        <div id="setPPStartWrap"><label for="setPPStart">Pay period start (any past start date)</label><input type="date" id="setPPStart"></div>
+        <div id="setPPHoursWrap"><label for="setPPHours">Hours per pay period</label><input type="number" id="setPPHours" step="0.5" min="0" inputmode="decimal"></div>
+        <div id="setPPSplitWrap" style="grid-column:1 / -1" hidden><label for="setPPSplit">Second period starts on day</label><input type="number" id="setPPSplit" min="2" max="28" step="1" inputmode="numeric"><div class="hint" id="setPPSplitHint" style="margin-top:4px"></div></div>
+        <div id="setPPHoursSemiWrap" style="grid-column:1 / -1" hidden><label for="setPPHoursSemi">Hours per pay period (blank = work days × day length)</label><input type="number" id="setPPHoursSemi" step="0.5" min="0" inputmode="decimal" placeholder="auto"></div>
+        <div><label for="setTarget">Normal day length (hrs)</label><input type="number" id="setTarget" step="0.25" min="0" inputmode="decimal"></div>
+        <div style="grid-column:span 2"><span class="lbl">Days I normally work</span><div class="days" id="setDays"></div></div>
+        <div><label for="setRate">Hourly rate ($, optional)</label><input type="number" id="setRate" step="0.01" min="0" inputmode="decimal"></div>
+        <div><label for="setRound">Round punches like my job does</label><select id="setRound">
+          <option value="">Off (exact times)</option><option value="5">Nearest 5 minutes</option>
+          <option value="6">Nearest 6 minutes (tenth of an hour)</option><option value="15">Nearest 15 minutes (7-minute rule)</option></select></div>
+        <div><label for="setOT">Overtime after (hrs per week, blank = off)</label><input type="number" id="setOT" step="0.5" min="0" inputmode="decimal"></div>
+      </div>
+      <div class="settings">
+        <div style="grid-column:1 / -1"><label for="setPaidBrk">Paid breaks: breaks this long or shorter count as worked time (minutes, blank = all breaks unpaid)</label><input type="number" id="setPaidBrk" step="1" min="0" inputmode="numeric" placeholder="e.g. 15"></div>
+      </div>
+      <div id="remBox" hidden>
+        <span class="lbl" style="margin-top:14px">Reminders</span>
+        <div class="rem">
+          <label><input type="checkbox" id="setRemOn"> Send me reminders</label>
+          <label><input type="checkbox" id="setRemLeave"> When I reach a normal day ("time to clock out")</label>
+          <label><input type="checkbox" id="setRemForgotOn"> If I'm still clocked in <input type="number" id="setRemForgot" min="5" step="5" inputmode="numeric"> min after that</label>
+          <label><input type="checkbox" id="setRemBreakOn"> When a break reaches <input type="number" id="setRemBreak" min="1" step="1" inputmode="numeric"> min</label>
+        </div>
+        <div class="note" id="remNote"></div>
+      </div>
+      <div class="note warnTxt" id="ppTypeNote" hidden>If your PTO balance looks off, re-enter it with today's date.</div>
+    </details>
+    <div class="hint">Type times like your sheet: <b>830</b> = 8:30, <b>1215</b> = 12:15, <b>5</b> = 5:00. AM/PM is figured out from the order of your punches (add <b>a</b>/<b>p</b> to force it, e.g. <b>6p</b>). Enter jumps to the next box. On a keyboard, press <b>P</b> to punch and <b>B</b> to start/end a break.<span id="longPressTip"> Long-press the app icon to punch or take a break without scrolling.</span> Break time is left out of your worked hours. PTO is in hours (e.g. <b>4</b> or <b>2.5</b>).</div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<div class="undo" id="undoBar" role="status" hidden><span id="undoMsg"></span><button id="undoBtn" type="button">Undo</button></div>
+
+<script src="payperiod.js?v=2026.10.22.4"></script>
+<script>
+(() => {
+  const FIELDS = [
+    {id:'in', label:'Clock In'},
+    {id:'lo', label:'Lunch Out'},
+    {id:'li', label:'Lunch In'},
+    {id:'out', label:'Clock Out'},
+  ];
+  const DAYNAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const $ = id => document.getElementById(id);
+
+  // ---------- storage: everything lives on this phone ----------
+  const cache = {
+    get(k, d){ try{ const v = localStorage.getItem('dt.'+k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } },
+    set(k, v){ try{ localStorage.setItem('dt.'+k, JSON.stringify(v)); }catch(e){} }
+  };
+  const pad = n => String(n).padStart(2,'0');
+  const isoDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const parseIso = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+  const todayIso = () => isoDate(new Date());
+  const addDays = (iso, n) => { const d = parseIso(iso); d.setDate(d.getDate()+n); return isoDate(d); };
+  const dayDiff = (a, b) => Math.round((parseIso(b) - parseIso(a)) / 864e5);
+  const validIso = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+  const defaults = {target:8, ppHours:80, ppStart:'', ppType:'biweekly', ppSplit:16, ppHoursSemi:'', workDays:[1,2,3,4,5], rate:'', ptoBal:'', ptoAsOf:'', ptoAccr:'', otWeek:40, autoBackup:true,
+    paidBreak:'', roundTo:'', ptoGoal:'', remOn:false, remLeave:true, remForgotOn:true, remForgot:60, remBreakOn:true, remBreak:15};
+  let settings = Object.assign({}, defaults, cache.get('settings', {}));
+  if(settings.ppType !== 'semimonthly') settings.ppType = 'biweekly';
+  let history = cache.get('history', {});   // iso -> {in,lo,li,out,pto}
+
+  // ---------- time parsing ----------
+  function parseRaw(raw){
+    let s = String(raw||'').trim().toLowerCase().replace(/\s+/g,'').replace(/\./g,'');
+    if(!s) return null;
+    const m = s.match(/^(\d{1,4})(?::(\d{2}))?(a|p|am|pm)?$/);
+    if(!m) return {err:true};
+    let h, min;
+    if(m[2] != null){ h = +m[1]; min = +m[2]; }
+    else if(m[1].length <= 2){ h = +m[1]; min = 0; }
+    else { h = +m[1].slice(0, -2); min = +m[1].slice(-2); }
+    if(min > 59 || h > 24) return {err:true};
+    if(h === 24) h = 0;
+    const ap = m[3] ? m[3][0] : null;
+    if(ap){
+      if(h < 1 || h > 12) return {err:true};
+      return {cands:[((h % 12) + (ap === 'p' ? 12 : 0))*60+min]};
+    }
+    if(h === 0 || h >= 13) return {cands:[h*60+min]};
+    if(h === 12) return {cands:[12*60+min, min]};
+    return {cands:[h*60+min, (h+12)*60+min]};
+  }
+  function resolveAll(vals){
+    const out = {}; let prev = null;
+    for(const f of FIELDS){
+      const p = parseRaw(vals && vals[f.id]);
+      if(!p){ out[f.id] = null; continue; }
+      if(p.err){ out[f.id] = 'err'; continue; }
+      let pick;
+      if(prev == null) pick = p.cands[0];
+      else{
+        const opts = [];
+        for(const c of p.cands) for(const k of [0,1440,2880]) opts.push(c+k);
+        pick = Math.min(...opts.filter(v => v >= prev));
+      }
+      out[f.id] = pick; prev = pick;
+    }
+    return out;
+  }
+  const fmtClock = mins => {
+    if(mins == null || mins === 'err') return '';
+    const day = Math.floor(mins/1440);
+    let m = Math.round(((mins % 1440)+1440)%1440);
+    let h = Math.floor(m/60) % 24, mm = m%60;
+    const ap = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h}:${pad(mm)} ${ap}${day>0 ? ' (+1)' : ''}`;
+  };
+  const fmtDur = mins => {
+    if(mins == null || isNaN(mins)) return '—';
+    const neg = mins < 0; mins = Math.abs(Math.round(mins));
+    return `${neg?'-':''}${Math.floor(mins/60)}:${pad(mins%60)}`;
+  };
+  const hrs = mins => (mins/60).toFixed(2);
+  const nowMins = () => { const d = new Date(); return d.getHours()*60 + d.getMinutes() + d.getSeconds()/60; };
+  const nowRaw = () => { const d = new Date(); let h = d.getHours(); const ap = h>=12?'p':'a'; h = h%12||12; return `${h}:${pad(d.getMinutes())}${ap}`; };
+  const ptoMins = rec => { const v = parseFloat(rec && rec.pto); return isFinite(v) && v > 0 ? v*60 : 0; };
+  const holMins = rec => { const v = parseFloat(rec && rec.hol); return isFinite(v) && v > 0 ? v*60 : 0; };
+  const offMins = rec => ptoMins(rec) + holMins(rec);   // paid time off the clock: PTO + holiday
+  const esc = t => String(t || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  // Rounding like the employer's time clock (settings.roundTo minutes, 0 = exact).
+  const roundM = m => { const n = +settings.roundTo || 0; return n && typeof m === 'number' ? Math.round(m / n) * n : m; };
+
+  function compute(vals, live){
+    const raw = resolveAll(vals), r = {};
+    for(const k in raw) r[k] = roundM(raw[k]);
+    const res = {r, raw, worked:0, lunch:null, state:'empty', err:false, breaks:0, paidBreaks:0, breakList:[], onBreak:false};
+    if(Object.values(r).includes('err')){ res.err = true; return res; }
+    if(r.in == null) return res;
+    let now = null;
+    if(live){ now = nowMins(); while(now < r.in) now += 1440; }
+    if(r.lo != null){
+      res.worked = r.lo - r.in;
+      if(r.li != null){
+        res.lunch = r.li - r.lo;
+        const end2 = r.out ?? now;
+        if(end2 != null) res.worked += Math.max(0, end2 - r.li);
+        res.state = r.out != null ? 'done' : (live ? 'working' : 'partial');
+      }else if(r.out != null){ res.state = 'done'; }
+      else if(live){ res.lunch = Math.max(0, now - r.lo); res.state = 'lunch'; }
+      else res.state = 'partial';
+    }else{
+      const end = r.out ?? now;
+      res.worked = end != null ? Math.max(0, end - r.in) : 0;
+      res.state = r.out != null ? 'done' : (live ? 'working' : 'partial');
+    }
+    // Breaks: whatever part of a break falls inside on-the-clock time is taken off "worked".
+    const segs = [];
+    if(r.lo != null){ segs.push([r.in, r.lo]); if(r.li != null){ const e2 = r.out ?? now; if(e2 != null) segs.push([r.li, e2]); } }
+    else { const e1 = r.out ?? now; if(e1 != null) segs.push([r.in, e1]); }
+    const overlap = (a, b) => segs.reduce((t, [x, y]) => t + Math.max(0, Math.min(b, y) - Math.max(a, x)), 0);
+    res.breakList = resolveBreaks(vals && vals.breaks, r.in).map(b => {
+      if(b.err || b.s == null) return b;
+      b.s = roundM(b.s); if(b.e != null) b.e = Math.max(b.s, roundM(b.e));
+      const end = b.e ?? (live ? now : null);
+      b.open = b.e == null;
+      b.mins = end != null && end > b.s ? overlap(b.s, end) : 0;
+      return b;
+    });
+    if(res.breakList.some(b => b.err)){ res.err = true; return res; }
+    // Paid breaks: a break this long or shorter counts as worked time (a running one counts until it goes over).
+    const paidMax = +settings.paidBreak || 0;
+    res.breakList.forEach(b => { b.paid = paidMax > 0 && b.s != null && (b.mins || 0) <= paidMax && !(b.open && !live); });
+    res.paidBreaks = res.breakList.reduce((t, b) => t + (b.paid ? b.mins || 0 : 0), 0);
+    res.breaks = res.breakList.reduce((t, b) => t + (b.paid ? 0 : b.mins || 0), 0);
+    res.worked = Math.max(0, res.worked - res.breaks);
+    res.onBreak = live && res.state === 'working' && res.breakList.some(b => b.open && b.s != null);
+    if(res.onBreak) res.state = 'break';
+    return res;
+  }
+  // Break times are read as the first matching time at or after clock-in (end at or after start).
+  function resolveBreaks(list, base){
+    if(!Array.isArray(list)) return [];
+    const after = (p, from) => {
+      if(from == null) return p.cands[0];
+      const opts = []; for(const c of p.cands) for(const k of [0,1440,2880]) opts.push(c+k);
+      return Math.min(...opts.filter(v => v >= from));
+    };
+    return list.map(b => {
+      const ps = parseRaw(b && b.s), pe = parseRaw(b && b.e);
+      if((ps && ps.err) || (pe && pe.err)) return {err:true, s:null, e:null};
+      if(!ps) return {s:null, e:null, mins:0, empty:true};
+      const sv = after(ps, base);
+      return {s:sv, e: pe ? after(pe, sv) : null, mins:0};
+    });
+  }
+  // When you'd reach a normal day (minutes after midnight; past 1440 means the next day).
+  function leaveAt(c, vals, live){
+    const target = (+settings.target || 0) * 60;
+    if(c.err || c.r.in == null || !target) return null;
+    const dayGoal = Math.max(0, target - offMins(vals));
+    let leave;
+    if(c.r.out != null) return c.r.out;
+    if(c.r.lo != null && c.r.li == null){
+      let n = live ? nowMins() : c.r.lo; while(n < c.r.lo) n += 1440;
+      leave = n + (dayGoal - (c.r.lo - c.r.in));
+    }else{
+      const start = c.r.li ?? c.r.in;
+      const before = c.r.li != null ? (c.r.lo - c.r.in) : 0;
+      leave = start + (dayGoal - before);
+    }
+    return leave + c.breaks;   // unpaid breaks push your leave time back
+  }
+  function dayInfo(iso){
+    const rec = history[iso];
+    if(!rec) return {worked:0, pto:0, hol:0, total:0, rec:null, c:null};
+    const c = compute(rec, iso === todayIso());
+    const worked = c.err ? 0 : c.worked, pto = ptoMins(rec), hol = holMins(rec);
+    return {worked, pto, hol, total: worked + pto + hol, rec, c};
+  }
+
+  // ---------- pay period ----------
+  // Boundaries live in payperiod.js. Every 2 weeks keeps the old anchor and a 14-day
+  // window (a blank start date still falls back to this week's Sunday). Twice a month
+  // is the 1st through the day before the split, then the split day through month end.
+  function shownPeriod(){
+    const today = todayIso();
+    if(viewPP && validIso(viewPP) && !PayPeriod.isSemi(settings)) return PayPeriod.biweeklyFromStart(viewPP);
+    return PayPeriod.payPeriodFor(viewPP || curDate, settings, today);
+  }
+  const isWorkDay = iso => (settings.workDays || []).includes(parseIso(iso).getDay());
+  const goalLabel = n => String(Math.round((+n || 0) * 100) / 100);
+
+  const monthId = iso => 'm-' + iso.slice(0,7);
+  let saveTimer = null;
+  function queueWrite(){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { cache.set('history', history); cache.set('settings', settings); }, 250);
+  }
+  window.addEventListener('pagehide', () => { cache.set('history', history); cache.set('settings', settings); });
+  document.addEventListener('visibilitychange', () => { if(document.hidden){ cache.set('history', history); cache.set('settings', settings); } });
+
+  // ---------- UI build ----------
+  const inputs = {}, resEls = {};
+  const pWrap = $('punches');
+  FIELDS.forEach((f, i) => {
+    const d = document.createElement('div'); d.className = 'punch';
+    d.innerHTML = `<label for="f_${f.id}">${f.label}</label>
+      <div class="inrow"><input id="f_${f.id}" autocomplete="off" inputmode="numeric" placeholder="—"><button class="now" title="Set to current time">Now</button></div>
+      <div class="res"></div>`;
+    pWrap.appendChild(d);
+    const inp = d.querySelector('input');
+    inputs[f.id] = inp; resEls[f.id] = d.querySelector('.res');
+    inp.addEventListener('input', onChange);
+    inp.addEventListener('keydown', e => {
+      if(e.key === 'Enter'){ e.preventDefault(); const nx = FIELDS[i+1]; (nx ? inputs[nx.id] : inputs.pto).focus(); }
+    });
+    d.querySelector('.now').addEventListener('click', () => { inp.value = nowRaw(); onChange(); });
+  });
+  {
+    const d = document.createElement('div'); d.className = 'punch pto';
+    d.innerHTML = `<label for="f_pto">PTO hrs</label><input id="f_pto" type="number" step="0.25" min="0" inputmode="decimal" placeholder="0"><div class="res"></div>`;
+    pWrap.appendChild(d);
+    inputs.pto = d.querySelector('input'); resEls.pto = d.querySelector('.res');
+    inputs.pto.addEventListener('input', onChange);
+    inputs.pto.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); inputs.hol.focus(); } });
+  }
+  {
+    const d = document.createElement('div'); d.className = 'punch pto hol';
+    d.innerHTML = `<label for="f_hol">Holiday hrs</label><input id="f_hol" type="number" step="0.25" min="0" inputmode="decimal" placeholder="0"><div class="res"></div>`;
+    pWrap.appendChild(d);
+    inputs.hol = d.querySelector('input'); resEls.hol = d.querySelector('.res');
+    inputs.hol.addEventListener('input', onChange);
+    inputs.hol.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); inputs.hol.blur(); } });
+  }
+  inputs.note = $('f_note');
+  inputs.note.addEventListener('input', onChange);
+  inputs.note.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); inputs.note.blur(); } });
+  const ALL = [...FIELDS.map(f => f.id), 'pto', 'hol', 'note'];
+
+  let curDate = todayIso(), viewPP = null;
+  let curBreaks = [];   // [{s:'10:15a', e:'10:30a'}] for the day on screen
+  function getVals(){
+    const v = {}; ALL.forEach(k => v[k] = inputs[k].value);
+    if(curBreaks.length) v.breaks = curBreaks.map(x => ({s:x.s, e:x.e}));   // same order as the rows on screen
+    return v;
+  }
+  function setVals(v){
+    ALL.forEach(k => inputs[k].value = (v && v[k]) || '');
+    curBreaks = (v && Array.isArray(v.breaks) ? v.breaks : []).map(x => ({s:x.s || '', e:x.e || ''}));
+    buildBreaks();
+  }
+  const openBreak = () => curBreaks.findIndex(b => String(b.s).trim() && !String(b.e).trim());
+
+  // ---------- break rows ----------
+  const brkEls = [];
+  const brkArmed = {};
+  function buildBreaks(){
+    const list = $('brkList'); list.innerHTML = ''; brkEls.length = 0;
+    $('brkWrap').hidden = !curBreaks.length;
+    curBreaks.forEach((b, i) => {
+      const row = document.createElement('div'); row.className = 'brkrow';
+      row.innerHTML = `<input autocomplete="off" inputmode="numeric" placeholder="start" aria-label="Break ${i+1} start">
+        <span class="dash">–</span>
+        <input autocomplete="off" inputmode="numeric" placeholder="end" aria-label="Break ${i+1} end">
+        <button class="now" title="Set end to current time">Now</button>
+        <span class="d"></span>
+        <button class="x" title="Delete break">✕</button>`;
+      const [si, ei] = row.querySelectorAll('input');
+      si.value = b.s; ei.value = b.e;
+      si.addEventListener('input', () => { curBreaks[i].s = si.value; onChange(); });
+      ei.addEventListener('input', () => { curBreaks[i].e = ei.value; onChange(); });
+      si.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); ei.focus(); } });
+      ei.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); ei.blur(); } });
+      row.querySelector('.now').addEventListener('click', () => { ei.value = nowRaw(); curBreaks[i].e = ei.value; onChange(); });
+      const x = row.querySelector('.x');
+      x.addEventListener('click', () => {
+        if(!brkArmed[i]){ x.textContent = 'Delete?'; x.classList.add('arm'); brkArmed[i] = setTimeout(() => { delete brkArmed[i]; x.textContent = '✕'; x.classList.remove('arm'); }, 3000); return; }
+        clearTimeout(brkArmed[i]); delete brkArmed[i];
+        curBreaks.splice(i, 1); buildBreaks(); onChange(); toast('Break deleted');
+      });
+      list.appendChild(row);
+      brkEls.push(row.querySelector('.d'));
+    });
+  }
+
+  function loadDay(iso){
+    curDate = iso; $('date').value = iso;
+    setVals(history[iso] || null);
+    $('copyBox').hidden = true;
+    render();
+  }
+  function onChange(){
+    const v = getVals();
+    if(v.breaks){ v.breaks = v.breaks.filter(x => String(x.s).trim() || String(x.e).trim()); if(!v.breaks.length) delete v.breaks; }
+    if(ALL.some(k => String(v[k]).trim()) || v.breaks) history[curDate] = v; else delete history[curDate];
+    queueWrite(monthId(curDate));
+    render();
+    if(curDate === todayIso()) scheduleReminders();
+  }
+
+  // ---------- render ----------
+  function render(){
+    const isToday = curDate === todayIso();
+    const vals = getVals();
+    const c = compute(vals, isToday);
+    const target = (+settings.target || 0) * 60;
+    FIELDS.forEach(f => {
+      const v = c.r[f.id], el = resEls[f.id];
+      el.classList.toggle('bad', v === 'err');
+      const rv = c.raw && c.raw[f.id];
+      el.textContent = v === 'err' ? "Can't read that" : fmtClock(v) + (typeof rv === 'number' && rv !== v ? ` (${fmtClock(rv).replace(/ [AP]M| \(\+1\)/g, '')})` : '');
+    });
+    const ptoM = ptoMins(vals), holM = holMins(vals), offM = ptoM + holM;
+    resEls.pto.textContent = ptoM ? hrs(ptoM) + ' hrs' : '';
+    resEls.hol.textContent = holM ? hrs(holM) + ' hrs' : '';
+    brkEls.forEach((el, i) => {
+      const b = c.breakList[i] || {};
+      el.className = 'd' + (b.err ? ' bad' : (b.open && isToday && b.s != null ? ' run' : ''));
+      el.textContent = b.err ? "Can't read" : b.s == null ? '' : (b.open ? (isToday ? fmtDur(b.mins) + '…' : 'no end') : fmtDur(b.mins)) + (b.paid && !(b.open && !isToday) ? ' paid' : '');
+    });
+
+    const st = $('status');
+    if(c.err){
+      ['sWorked','sLunch','sLeft','sLeave'].forEach(id => $(id).textContent='—');
+      st.textContent = 'Fix the highlighted time to see totals.';
+    }else{
+      $('sWorked').textContent = hrs(c.worked);
+      $('sWorkedDec').textContent = 'hrs' + (ptoM ? ` + ${hrs(ptoM)} PTO` : '') + (holM ? ` + ${hrs(holM)} holiday` : '');
+      $('sLunch').textContent = c.lunch != null ? fmtDur(c.lunch) : '—';
+      const nb = c.breakList.filter(b => b.s != null).length;
+      $('sLunchS').textContent = (c.lunch != null ? `${hrs(c.lunch)} hrs lunch` : 'no lunch') +
+        (nb ? ` · breaks ${fmtDur(c.breaks)}${c.paidBreaks ? ` (+${fmtDur(c.paidBreaks)} paid)` : ''}` : '');
+      const dayGoal = Math.max(0, target - offM);
+      const left = dayGoal - c.worked;
+      if(target){
+        $('sLeft').textContent = left > 0 ? hrs(left) : '+' + hrs(-left);
+        $('sLeftS').textContent = left > 0 ? `hrs to a ${settings.target}-hr day` : 'hrs past a normal day';
+      }else{ $('sLeft').textContent = '—'; $('sLeftS').textContent = ''; }
+      const leave = leaveAt(c, vals, isToday);
+      $('sLeave').textContent = leave != null ? fmtClock(leave).replace(' (+1)','') : '—';
+      $('sLeaveS').textContent = c.r.out != null ? 'clocked out' : (leave != null ? 'for a normal day' : '');
+      const labels = {empty: holM ? '<b class="holTxt">Holiday</b>' : ptoM ? '<b class="ptoTxt">PTO day</b>' : 'Not clocked in yet.',
+        working:'<span class="live"></span><b>On the clock</b>',
+        lunch:'<span class="live" style="background:var(--warn)"></span><b>On lunch</b>',
+        break:'<span class="live" style="background:var(--pto)"></span><b>On break</b> — not counting toward your hours',
+        done:'<b>Day complete.</b>', partial:'Incomplete day (missing a punch).'};
+      st.innerHTML = labels[c.state] || '';
+    }
+    const next = FIELDS.find(f => !inputs[f.id].value.trim());
+    $('punchBtn').textContent = next ? (punchArmed ? `Tap again: ${next.label}` : `Punch: ${next.label}`) : 'All punches in';
+    $('punchBtn').disabled = !next;
+    const ob = isToday && openBreak() >= 0;
+    $('breakBtn').textContent = ob ? 'End break' : 'Start break';
+    $('breakBtn').classList.toggle('onbreak', ob);
+    $('setupBanner').hidden = PayPeriod.isSemi(settings) || validIso(settings.ppStart);
+    renderMissed();
+    syncShortcuts();
+    renderPP();
+    renderPTO();
+    renderHistory();
+  }
+
+  // Past days (last 3 weeks) with a punch missing, a break with no end, or a time that can't be read.
+  let missedFirst = null;
+  function renderMissed(){
+    const today = todayIso(), from = addDays(today, -21), bad = [];
+    Object.keys(history).sort().forEach(iso => {
+      if(iso >= today || iso < from) return;
+      const rec = history[iso], c = compute(rec, false);
+      let why = null;
+      if(c.err) why = "has a time that can't be read";
+      else if(c.breakList.some(b => b.open && b.s != null)) why = 'has a break with no end';
+      else if(c.r.in == null && [rec.lo, rec.li, rec.out].some(x => String(x || '').trim())) why = 'is missing Clock In';
+      else if(c.r.in != null && c.r.out == null) why = 'is missing ' + (c.r.lo != null && c.r.li == null ? 'Lunch In and Clock Out' : 'Clock Out');
+      if(why) bad.push({iso, why});
+    });
+    const b = $('missBanner');
+    b.hidden = !bad.length;
+    if(!bad.length){ missedFirst = null; return; }
+    const f = bad[bad.length - 1], d = parseIso(f.iso);
+    missedFirst = f.iso;
+    b.innerHTML = `<b>${DAYNAMES[d.getDay()]} ${d.getMonth()+1}/${d.getDate()}</b> ${f.why}.` +
+      (bad.length > 1 ? ` ${bad.length - 1} more day${bad.length > 2 ? 's' : ''} too.` : '') + ' Tap to fix it.';
+  }
+  $('missBanner').addEventListener('click', () => { if(missedFirst){ viewPP = null; loadDay(missedFirst); window.scrollTo({top:0}); } });
+
+  const armed = {};
+  function appendDayRow(body, iso, today){
+    const info = dayInfo(iso);
+    const tr = document.createElement('tr');
+    tr.className = 'click' + (iso === curDate ? ' sel' : '');
+    const d = parseIso(iso);
+    const name = `${DAYNAMES[d.getDay()]} ${d.getMonth()+1}/${d.getDate()}` + (iso === today ? ' •' : '');
+    if(info.rec){
+      const c = info.c;
+      tr.innerHTML = `<td>${name}${info.rec.note ? `<div class="dnote">${esc(info.rec.note)}</div>` : ''}</td>
+        <td>${c.err ? '?' : fmtClock(c.r.in) || '—'}</td>
+        <td>${c.err ? '?' : (c.r.out != null ? fmtClock(c.r.out) : (c.r.in != null && iso===today ? 'now' : '—'))}</td>
+        <td class="num">${info.worked ? hrs(info.worked) : '—'}</td>
+        <td class="num"><span class="ptoTxt">${info.pto ? hrs(info.pto) : ''}</span>${info.hol ? `<span class="holTxt">${info.pto ? ' + ' : ''}${hrs(info.hol)} hol</span>` : ''}</td>
+        <td class="num">${hrs(info.total)}</td>
+        <td class="num"><button class="x${armed[iso] ? ' arm' : ''}" title="Delete day">${armed[iso] ? 'Delete?' : '✕'}</button></td>`;
+      tr.querySelector('.x').addEventListener('click', e => {
+        e.stopPropagation();
+        if(!armed[iso]){ armed[iso] = setTimeout(() => { delete armed[iso]; render(); }, 3000); render(); return; }
+        clearTimeout(armed[iso]); delete armed[iso];
+        delete history[iso]; queueWrite(monthId(iso));
+        if(iso === curDate) setVals(null);
+        toast('Day deleted'); render();
+      });
+    }else{
+      tr.innerHTML = `<td class="off">${name}</td><td colspan="5" class="off">${isWorkDay(iso) ? '—' : 'off'}</td><td></td>`;
+    }
+    tr.addEventListener('click', () => { viewPP = null; loadDay(iso); });
+    body.appendChild(tr);
+    return info;
+  }
+  function dayExpect(iso, info, today, target){
+    let expect = 0, count = false;
+    if(iso > today){ if(!info.rec && isWorkDay(iso)){ expect = target; count = true; } }
+    else if(iso === today){
+      const done = info.c && info.c.state === 'done';
+      if(!done && (isWorkDay(iso) || (info.c && info.c.state !== 'empty'))){
+        expect = Math.max(0, target - info.total); if(expect > 0) count = true;
+      }
+    }
+    return {expect, count};
+  }
+  function appendWeekSub(body, label, total){
+    const s = document.createElement('tr'); s.className = 'sub';
+    s.innerHTML = `<td colspan="5">${label}</td><td class="num">${hrs(total)}</td><td></td>`;
+    body.appendChild(s);
+  }
+  function renderPP(){
+    const today = todayIso();
+    const period = shownPeriod();
+    const start = period.start, end = period.end, semi = PayPeriod.isSemi(settings);
+    const opt = {month:'short', day:'numeric'};
+    $('ppTitle').textContent = `Pay period ${parseIso(start).toLocaleDateString(undefined,opt)} – ${parseIso(end).toLocaleDateString(undefined,opt)}`;
+    const goalH = semi ? PayPeriod.periodGoalHours(period, settings) : (+settings.ppHours || 0);
+    const goalText = semi ? goalLabel(goalH) : String(settings.ppHours);
+    const goal = goalH * 60, target = (+settings.target || 0) * 60;
+    const body = $('ppBody'); body.innerHTML = '';
+    let tot = 0, totW = 0, totP = 0, totH = 0;
+    let remDays = 0, estRemain = 0;
+    const ot = PayPeriod.overtimeByDay(period, settings, iso => dayInfo(iso).worked);
+    // Every 2 weeks: week 1 is days 0–6 and week 2 is days 7–13, same as before.
+    const wk = [0, 0], wkEst = [0, 0];
+
+    if(!semi){
+      period.days.forEach((iso, i) => {
+        const w = i < 7 ? 0 : 1;
+        const info = appendDayRow(body, iso, today);
+        tot += info.total; totW += info.worked; totP += info.pto; totH += info.hol; wk[w] += info.total;
+        const ex = dayExpect(iso, info, today, target);
+        estRemain += ex.expect; wkEst[w] += ex.expect; if(ex.count) remDays++;
+        if(i === 6 || i === period.days.length - 1){
+          const slice = period.days.slice(w * 7, w * 7 + 7);
+          const otW = slice.reduce((t, d) => t + (ot.byDay[d] || 0), 0);
+          appendWeekSub(body, `Week ${w+1} total${otW ? ` · <span class="ot">${hrs(otW)} overtime</span>` : ''}`, wk[w]);
+        }
+      });
+    }else{
+      PayPeriod.workweeksIn(period).forEach(g => {
+        let gTot = 0, gOt = 0;
+        g.days.forEach(iso => {
+          const info = appendDayRow(body, iso, today);
+          tot += info.total; totW += info.worked; totP += info.pto; totH += info.hol; gTot += info.total;
+          gOt += ot.byDay[iso] || 0;
+          const ex = dayExpect(iso, info, today, target);
+          estRemain += ex.expect; if(ex.count) remDays++;
+        });
+        const when = parseIso(g.weekStart).toLocaleDateString(undefined, opt);
+        const part = g.days.length < 7 ? ' (part)' : '';
+        appendWeekSub(body, `Week of ${when}${part}${gOt ? ` · <span class="ot">${hrs(gOt)} overtime</span>` : ''}`, gTot);
+      });
+    }
+
+    const denom = Math.max(goal, tot) || 1;
+    $('barW').style.width = (totW/denom*100) + '%';
+    $('barP').style.width = ((totP + totH)/denom*100) + '%';
+    $('barL').textContent = `${hrs(tot)} of ${goalText} hrs`;
+    $('barR').textContent = goal ? `${Math.round(tot/goal*100)}%` : '';
+
+    const left = goal - tot;
+    $('stLeftPP').classList.toggle('over', left <= 0);
+    $('ppLeft').textContent = left > 0 ? hrs(left) : '+' + hrs(-left);
+    $('ppLeftS').textContent = left > 0 ? `hrs to reach ${goalText}` : `hrs over ${goalText}`;
+
+    const isCurrent = today >= start && today <= end;
+    if(left > 0 && isCurrent && remDays > 0){
+      $('ppPace').textContent = hrs(left / remDays);
+      $('ppPaceS').textContent = `hrs/day over ${remDays} work day${remDays>1?'s':''} left`;
+    }else if(left > 0 && isCurrent){
+      $('ppPace').textContent = hrs(left); $('ppPaceS').textContent = 'no normal work days left';
+    }else{
+      $('ppPace').textContent = '—'; $('ppPaceS').textContent = left <= 0 ? 'goal reached' : (today > end ? 'period ended' : 'not started');
+    }
+
+    let ref = isCurrent ? today : curDate;
+    if(ref < start || ref > end) ref = start;
+    let wkTot, wkGoal, wkExpect, wkName;
+    if(!semi){
+      const w = dayDiff(start, ref) < 7 ? 0 : 1;
+      wkTot = wk[w]; wkExpect = wkEst[w]; wkGoal = goal / 2; wkName = `Week ${w+1}`;
+    }else{
+      const sun = PayPeriod.weekStart(ref);
+      wkTot = 0; wkExpect = 0;
+      for(let i = 0; i < 7; i++){
+        const iso = addDays(sun, i), info = dayInfo(iso);
+        wkTot += info.total;
+        wkExpect += dayExpect(iso, info, today, target).expect;
+      }
+      wkGoal = PayPeriod.weekGoalHours(sun, settings) * 60;
+      wkName = 'This week';
+    }
+    const wLeft = wkGoal - wkTot;
+    $('stLeftWk').classList.toggle('over', wLeft <= 0);
+    $('wkLeft').textContent = wLeft > 0 ? hrs(wLeft) : '+' + hrs(-wLeft);
+    $('wkLeftS').textContent = `${wkName}: ${hrs(wkTot)} of ${hrs(wkGoal)} done`;
+    $('wkEst').textContent = hrs(wkTot + wkExpect);
+    $('wkEstS').textContent = wkExpect ? `with normal days · +${hrs(wkExpect)} still expected` : 'no more normal days';
+
+    $('ppTotal').textContent = `${hrs(tot)} hrs`;
+    const projected = tot + (isCurrent ? estRemain : 0);
+    const otTot = ot.total;
+    $('ppBreak').innerHTML = `Worked ${hrs(totW)} · <span class="ptoTxt">PTO ${hrs(totP)}</span>` +
+      (totH ? ` · <span class="holTxt">Holiday ${hrs(totH)}</span>` : '') +
+      (otTot ? ` · <span class="ot">Overtime ${hrs(otTot)}</span>` : '') +
+      (isCurrent ? ` · On pace for <b style="color:var(--text)">${hrs(projected)}</b>` : '');
+    // Overtime is paid at time and a half: the extra half goes on top of the regular rate.
+    const gross = (totW + totP + totH)/60*(+settings.rate) + otTot/60*(+settings.rate)*0.5;
+    $('ppPay').textContent = settings.rate ? `Rough gross $${gross.toFixed(2)}${otTot ? ' with overtime' : ''}` : '';
+  }
+
+  function nextAccrualStart(iso){
+    const today = todayIso();
+    return PayPeriod.nextPeriod(PayPeriod.payPeriodFor(iso, settings, today), settings, today).start;
+  }
+  // Balance today from the entered balance + "as of" date: accruals since then,
+  // minus PTO used since then. Null when no balance or date is entered.
+  function ptoFigures(today){
+    const bal = parseFloat(settings.ptoBal);
+    if(!isFinite(bal) || !validIso(settings.ptoAsOf)) return null;
+    const asOf = settings.ptoAsOf, accr = parseFloat(settings.ptoAccr) || 0;
+    let usedPast = 0, usedFuture = 0;
+    for(const iso in history){
+      const p = ptoMins(history[iso]) / 60;
+      if(!p || iso <= asOf) continue;
+      if(iso <= today) usedPast += p; else usedFuture += p;
+    }
+    const n = accr ? PayPeriod.accrualCount(asOf, today, settings) : 0;
+    return {bal, asOf, accr, usedPast, usedFuture, n, now: bal + n*accr - usedPast};
+  }
+  function renderPTO(){
+    const today = todayIso();
+    const viewed = shownPeriod(), ps = viewed.start, pe = viewed.end;
+    let usedPP = 0, usedYr = 0; const yr = today.slice(0,4);
+    for(const iso in history){
+      const p = ptoMins(history[iso]);
+      if(!p) continue;
+      if(iso >= ps && iso <= pe) usedPP += p;
+      if(iso.slice(0,4) === yr && iso <= today) usedYr += p;
+    }
+    $('ptoPP').textContent = hrs(usedPP);
+    $('ptoYr').textContent = hrs(usedYr);
+    const bal = parseFloat(settings.ptoBal);
+    if(!isFinite(bal) || !validIso(settings.ptoAsOf)){
+      $('ptoNow').textContent = '—'; $('ptoNowS').textContent = 'enter your Fuzion balance below';
+      $('ptoAfter').textContent = '—'; $('ptoAfterS').textContent = '';
+      return;
+    }
+    const {asOf, accr, usedPast, usedFuture, n, now} = ptoFigures(today);
+    $('ptoNow').textContent = now.toFixed(2);
+    $('ptoNowS').textContent = `hrs · ${usedPast.toFixed(2)} used${n ? `, +${(n*accr).toFixed(2)} accrued` : ''} since ${parseIso(asOf).toLocaleDateString(undefined,{month:'short',day:'numeric'})}`;
+    $('ptoAfter').textContent = (now - usedFuture).toFixed(2);
+    $('ptoAfterS').textContent = usedFuture ? `hrs · ${usedFuture.toFixed(2)} scheduled ahead` : 'hrs · nothing scheduled';
+
+    // Walk forward through scheduled PTO, adding each new pay period's accrual on its start date.
+    const fmtD = iso => { const d = parseIso(iso); return `${DAYNAMES[d.getDay()]} ${d.getMonth()+1}/${d.getDate()}`; };
+    const future = Object.keys(history).filter(iso => iso > today && ptoMins(history[iso])).sort();
+    let bal2 = now, nextStart = nextAccrualStart(today), neg = null;
+    for(const iso of future){
+      while(accr && nextStart <= iso){ bal2 += accr; nextStart = nextAccrualStart(nextStart); }
+      bal2 -= ptoMins(history[iso]) / 60;
+      if(bal2 < -0.005 && !neg) neg = {iso, bal: bal2};
+    }
+    const warn = $('ptoWarn');
+    warn.hidden = !neg && !(now < -0.005);
+    warn.className = 'note warnTxt';
+    if(now < -0.005) warn.textContent = `Your balance is below zero (${now.toFixed(2)} hrs). Check it against Fuzion.`;
+    else if(neg) warn.textContent = `PTO on ${fmtD(neg.iso)} would take your balance to ${neg.bal.toFixed(2)} hrs.`;
+
+    const goal = parseFloat(settings.ptoGoal), gn = $('ptoGoalNote');
+    gn.hidden = !(goal > 0);
+    if(goal > 0){
+      if(now - usedFuture >= goal) gn.textContent = `You have ${goal.toFixed(2)} hrs or more, even after scheduled PTO.`;
+      else if(!accr) gn.textContent = 'Enter how much you accrue per pay period to see when you\'ll reach ' + goal.toFixed(2) + ' hrs.';
+      else {
+        // Every 2 weeks keeps the old 130-period cap (about 5 years). Twice a month
+        // is 24 periods a year, so 120 steps is the same 5 years.
+        const cap = PayPeriod.isSemi(settings) ? 120 : 130;
+        let b = now, st = nextAccrualStart(today), hit = null;
+        for(let k = 0; k < cap && !hit; k++){
+          const used = future.filter(iso => iso < st).reduce((t, iso) => t + ptoMins(history[iso]) / 60, 0);
+          b = now + (k + 1) * accr - used;
+          if(b >= goal) hit = st;
+          st = nextAccrualStart(st);
+        }
+        gn.textContent = hit ? `You'll reach ${goal.toFixed(2)} hrs around ${parseIso(hit).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}, counting scheduled PTO.`
+          : `At this rate you won't reach ${goal.toFixed(2)} hrs in the next 5 years.`;
+      }
+    }
+  }
+
+  // ---------- pay period history ----------
+  function periodSummary(start){
+    const today = todayIso();
+    const found = PayPeriod.payPeriodFor(start, settings, today);
+    // A 2-week window opened with the arrows stays 14 days even if the anchor moved.
+    const period = (!PayPeriod.isSemi(settings) && found.start !== start) ? PayPeriod.biweeklyFromStart(start) : found;
+    const sum = {worked:0, pto:0, hol:0, ot:0, total:0, start: period.start, end: period.end};
+    for(const iso of period.days){
+      const info = dayInfo(iso);
+      sum.worked += info.worked; sum.pto += info.pto; sum.hol += info.hol; sum.total += info.total;
+    }
+    sum.ot = PayPeriod.overtimeByDay(period, settings, iso => dayInfo(iso).worked).total;
+    return sum;
+  }
+  function renderHistory(){
+    if(!$('histDetails').open) return;
+    const today = todayIso(), days = Object.keys(history).sort();
+    const body = $('histBody'); body.innerHTML = '';
+    if(!days.length){ $('yrTotals').textContent = 'No hours logged yet.'; return; }
+    const curP = PayPeriod.payPeriodFor(today, settings, today);
+    const firstP = PayPeriod.payPeriodFor(days[0], settings, today);
+    const yr = today.slice(0, 4), y = {worked:0, pto:0, hol:0, ot:0};
+    const opt = {month:'short', day:'numeric'};
+    for(let p = curP, n = 0; p.start >= firstP.start && n < 52; p = PayPeriod.prevPeriod(p, settings, today), n++){
+      const sum = periodSummary(p.start);
+      if(p.start.slice(0, 4) === yr){ y.worked += sum.worked; y.pto += sum.pto; y.hol += sum.hol; y.ot += sum.ot; }
+      if(!sum.total && p.start !== curP.start) continue;
+      const tr = document.createElement('tr');
+      if(p.start === curP.start) tr.className = 'cur';
+      tr.innerHTML = `<td>${parseIso(p.start).toLocaleDateString(undefined,opt)} – ${parseIso(p.end).toLocaleDateString(undefined,opt)}${p.start === curP.start ? ' (now)' : ''}</td>
+        <td class="num">${hrs(sum.worked)}</td><td class="num ptoTxt">${sum.pto ? hrs(sum.pto) : ''}</td><td class="num holTxt">${sum.hol ? hrs(sum.hol) : ''}</td>
+        <td class="num ot">${sum.ot ? hrs(sum.ot) : ''}</td><td class="num">${hrs(sum.total)}</td>`;
+      tr.addEventListener('click', () => { viewPP = p.start; render(); $('ppCard').scrollIntoView({behavior:'smooth', block:'start'}); });
+      body.appendChild(tr);
+    }
+    $('yrTotals').textContent = `Pay periods starting in ${yr}: worked ${hrs(y.worked)} · PTO ${hrs(y.pto)} · holiday ${hrs(y.hol)} · overtime ${hrs(y.ot)} hrs`;
+  }
+  $('histDetails').addEventListener('toggle', renderHistory);
+
+  // ---------- undo ----------
+  // Quick actions (punch, break, clock out) keep the day as it was, so a slip can be undone.
+  let undoState = null, undoTimer = null;
+  const snapDay = iso => history[iso] ? JSON.parse(JSON.stringify(history[iso])) : null;
+  function offerUndo(msg, iso, before){
+    undoState = {iso, before};
+    $('undoMsg').textContent = msg;
+    $('undoBar').hidden = false;
+    $('toast').classList.remove('show');
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(() => { $('undoBar').hidden = true; undoState = null; }, 6000);
+  }
+  $('undoBtn').addEventListener('click', () => {
+    if(!undoState) return;
+    const {iso, before} = undoState;
+    undoState = null; clearTimeout(undoTimer); $('undoBar').hidden = true;
+    if(before) history[iso] = before; else delete history[iso];
+    queueWrite(monthId(iso));
+    if(iso === curDate) setVals(history[iso] || null);
+    render(); if(iso === todayIso()) scheduleReminders();
+    toast('Undone');
+  });
+
+  // ---------- actions ----------
+  // A second Punch within a minute is usually a double tap, so ask first.
+  let lastPunchAt = 0, punchArmed = null;
+  function disarmPunch(){ clearTimeout(punchArmed); punchArmed = null; $('punchBtn').classList.remove('danger'); render(); }
+  function punch(){
+    if(curDate !== todayIso()){ viewPP = null; loadDay(todayIso()); }
+    const next = FIELDS.find(f => !inputs[f.id].value.trim());
+    if(!next){ toast('All punches are in for today'); return; }
+    if(Date.now() - lastPunchAt < 60000 && !punchArmed){
+      punchArmed = setTimeout(disarmPunch, 4000);
+      $('punchBtn').classList.add('danger');
+      render();
+      toast(`You just punched. Tap again to punch ${next.label}.`);
+      return;
+    }
+    if(punchArmed){ clearTimeout(punchArmed); punchArmed = null; $('punchBtn').classList.remove('danger'); }
+    const before = snapDay(curDate);
+    const t = nowRaw();
+    inputs[next.id].value = t;
+    const ob = openBreak(); let ended = false;
+    if(ob >= 0 && next.id !== 'in' && next.id !== 'li'){ curBreaks[ob].e = t; buildBreaks(); ended = true; }
+    onChange();
+    lastPunchAt = Date.now();
+    offerUndo(`${next.label} at ${fmtClock(resolveAll(getVals())[next.id])}` + (ended ? ' · break ended' : ''), curDate, before);
+  }
+  $('punchBtn').addEventListener('click', punch);
+  function toggleBreak(){
+    if(curDate !== todayIso()){ viewPP = null; loadDay(todayIso()); }
+    const ob = openBreak();
+    const before = snapDay(curDate);
+    if(ob >= 0){
+      curBreaks[ob].e = nowRaw(); buildBreaks(); onChange();
+      const b = compute(getVals(), true).breakList[ob];
+      offerUndo(`Break ended · ${fmtDur(b && b.mins)}`, curDate, before);
+      return;
+    }
+    const c = compute(getVals(), true);
+    if(c.err){ toast('Fix the highlighted time first'); return; }
+    if(c.state === 'empty' || c.r.in == null){ toast('Clock in before starting a break'); return; }
+    if(c.state === 'lunch'){ toast("You're on lunch — punch Lunch In first"); return; }
+    if(c.state === 'done' || c.r.out != null){ toast("You've already clocked out"); return; }
+    curBreaks.push({s:nowRaw(), e:''}); buildBreaks(); onChange();
+    offerUndo('Break started', curDate, before);
+  }
+  $('breakBtn').addEventListener('click', toggleBreak);
+  function clockOut(){
+    if(curDate !== todayIso()){ viewPP = null; loadDay(todayIso()); }
+    if(!inputs.in.value.trim()){ toast("You're not clocked in"); return; }
+    if(inputs.out.value.trim()){ toast('Already clocked out'); return; }
+    const before = snapDay(curDate);
+    const t = nowRaw();
+    inputs.out.value = t;
+    const ob = openBreak(); if(ob >= 0){ curBreaks[ob].e = t; buildBreaks(); }
+    onChange();
+    offerUndo(`Clocked out at ${fmtClock(resolveAll(getVals()).out)}`, curDate, before);
+  }
+  $('ptoDayBtn').addEventListener('click', () => { inputs.pto.value = settings.target || 8; onChange(); toast(`${inputs.pto.value} hrs PTO logged`); });
+  $('holDayBtn').addEventListener('click', () => { inputs.hol.value = settings.target || 8; onChange(); toast(`${inputs.hol.value} hrs holiday logged`); });
+  let clearArm = null;
+  $('clearBtn').addEventListener('click', () => {
+    const b = $('clearBtn');
+    if(!clearArm){ b.textContent = 'Tap again to clear'; b.classList.add('danger'); clearArm = setTimeout(() => { clearArm = null; b.textContent = 'Clear day'; b.classList.remove('danger'); }, 3000); return; }
+    clearTimeout(clearArm); clearArm = null; b.textContent = 'Clear day'; b.classList.remove('danger');
+    setVals(null); onChange(); toast('Day cleared');
+  });
+  $('copyBtn').addEventListener('click', () => {
+    const v = getVals(), c = compute(v, curDate === todayIso());
+    const lines = FIELDS.map(f => `${f.label}: ${fmtClock(c.r[f.id]) || '—'}`);
+    c.breakList.forEach((b, i) => { if(b.s != null) lines.push(`Break ${i+1}: ${fmtClock(b.s)} – ${b.e != null ? fmtClock(b.e) : '—'} (${fmtDur(b.mins)}${b.paid ? ', paid' : ''})`); });
+    lines.push(`Worked: ${hrs(c.worked)} hrs` + (c.breaks ? `, breaks excluded` : ''));
+    if(ptoMins(v)) lines.push(`PTO: ${hrs(ptoMins(v))} hrs`);
+    if(holMins(v)) lines.push(`Holiday: ${hrs(holMins(v))} hrs`);
+    if(String(v.note || '').trim()) lines.push(`Note: ${v.note.trim()}`);
+    const text = `${curDate}\n` + lines.join('\n');
+    const fallback = () => { const box = $('copyBox'); box.value = text; box.hidden = false; box.focus(); box.select(); toast('Select and copy the text below'); };
+    try{ navigator.clipboard.writeText(text).then(() => toast('Copied'), fallback); }catch(e){ fallback(); }
+  });
+  $('date').addEventListener('change', e => { if(e.target.value){ viewPP = null; loadDay(e.target.value); } });
+  const shiftPP = n => {
+    const today = todayIso();
+    // Every 2 weeks steps 14 days from whatever window is on screen, same as before.
+    if(!PayPeriod.isSemi(settings)){
+      viewPP = addDays(viewPP || PayPeriod.payPeriodFor(curDate, settings, today).start, 14 * n);
+      render();
+      return;
+    }
+    let p = shownPeriod();
+    const dir = n >= 0 ? 1 : -1;
+    for(let i = 0; i < Math.abs(n); i++) p = dir > 0 ? PayPeriod.nextPeriod(p, settings, today) : PayPeriod.prevPeriod(p, settings, today);
+    viewPP = p.start;
+    render();
+  };
+  $('prevPP').addEventListener('click', () => shiftPP(-1));
+  $('nextPP').addEventListener('click', () => shiftPP(1));
+  $('thisPP').addEventListener('click', () => { viewPP = null; loadDay(todayIso()); });
+  document.addEventListener('keydown', e => {
+    if(['INPUT','SELECT','TEXTAREA','BUTTON'].includes(e.target.tagName)) return;
+    if(e.key === 'p' || e.key === 'P'){ e.preventDefault(); punch(); }
+    if(e.key === 'b' || e.key === 'B'){ e.preventDefault(); toggleBreak(); }
+  });
+
+  // settings
+  const SETMAP = [['setPPStart','ppStart',false],['setPPHours','ppHours',true],['setPPSplit','ppSplit',true],['setPPHoursSemi','ppHoursSemi',true],['setTarget','target',true],
+    ['setRate','rate',true],['setPtoBal','ptoBal',true],['setPtoAsOf','ptoAsOf',false],['setPtoAccr','ptoAccr',true],
+    ['setPaidBrk','paidBreak',true],['setOT','otWeek',true],['setRound','roundTo',true],['setPtoGoal','ptoGoal',true],['setRemForgot','remForgot',true],['setRemBreak','remBreak',true]];
+  const CHECKMAP = [['setRemLeave','remLeave'],['setRemForgotOn','remForgotOn'],['setRemBreakOn','remBreakOn']];
+  function updatePeriodFields(){
+    const semi = PayPeriod.isSemi(settings);
+    $('setPPStartWrap').hidden = semi;
+    $('setPPHoursWrap').hidden = semi;
+    $('setPPSplitWrap').hidden = !semi;
+    $('setPPHoursSemiWrap').hidden = !semi;
+    $('setPPSplitHint').textContent = PayPeriod.splitHint(settings);
+    $('setPPTypeSemi').textContent = PayPeriod.splitOption(settings);
+  }
+  function fillSettingsInputs(){
+    const type = $('setPPType');
+    if(document.activeElement !== type) type.value = PayPeriod.isSemi(settings) ? 'semimonthly' : 'biweekly';
+    SETMAP.forEach(([id, key]) => { const el = $(id); if(document.activeElement !== el) el.value = settings[key] ?? ''; });
+    $('setDays').querySelectorAll('input').forEach((cb, i) => cb.checked = (settings.workDays || []).includes(i));
+    CHECKMAP.forEach(([id, key]) => $(id).checked = !!settings[key]);
+    $('setRemOn').checked = !!settings.remOn;
+    $('remBox').querySelector('.rem').classList.toggle('off', !settings.remOn);
+    updatePeriodFields();
+  }
+  $('setPPType').addEventListener('change', e => {
+    const next = e.target.value === 'semimonthly' ? 'semimonthly' : 'biweekly';
+    if(next !== settings.ppType){
+      // Accruals are counted per pay period, so the new calendar would re-count
+      // them all the way back to the old "as of" date. Lock in today's balance
+      // (worked out with the old calendar) as of today first, so it doesn't jump.
+      const today = todayIso();
+      const pto = settings.ptoAsOf <= today ? ptoFigures(today) : null;
+      settings.ppType = next;
+      viewPP = null;
+      const note = $('ppTypeNote');
+      if(pto){
+        settings.ptoBal = Math.round(pto.now * 100) / 100;
+        settings.ptoAsOf = today;
+        note.textContent = `PTO balance kept at ${settings.ptoBal.toFixed(2)} hrs, now counted from today. Fix it below if Fuzion shows something else.`;
+        toast(`PTO balance kept at ${settings.ptoBal.toFixed(2)} hrs`);
+      }else{
+        note.textContent = 'If your PTO balance looks off, re-enter it with today\'s date.';
+        toast('If your PTO balance looks off, re-enter it with today\'s date.');
+      }
+      note.hidden = false;
+    }
+    queueWrite('settings'); fillSettingsInputs(); render(); scheduleReminders();
+  });
+  SETMAP.forEach(([id, key, num]) => {
+    $(id).addEventListener('input', e => {
+      const el = e.target; settings[key] = num ? (el.value === '' ? '' : +el.value) : el.value;
+      if(key === 'ppSplit' || key === 'ppHoursSemi' || key === 'ppStart' || key === 'ppHours') updatePeriodFields();
+      queueWrite('settings'); render(); scheduleReminders();
+    });
+  });
+  DAYNAMES.forEach((n, i) => {
+    const l = document.createElement('label');
+    l.innerHTML = `<input type="checkbox" id="wd${i}"> ${n}`;
+    l.querySelector('input').addEventListener('change', e => {
+      settings.workDays = (settings.workDays || []).filter(x => x !== i);
+      if(e.target.checked) settings.workDays.push(i);
+      queueWrite('settings'); render();
+    });
+    $('setDays').appendChild(l);
+  });
+  $('setupBanner').addEventListener('click', () => { $('setDetails').open = true; $('setPPStart').focus(); });
+  CHECKMAP.forEach(([id, key]) => $(id).addEventListener('change', e => { settings[key] = e.target.checked; queueWrite('settings'); render(); scheduleReminders(); }));
+
+  // ---------- backup & restore ----------
+  function parseCSV(text){
+    const rows = []; let row = [], f = '', q = false;
+    for(let i=0;i<text.length;i++){
+      const ch = text[i];
+      if(q){ if(ch === '"'){ if(text[i+1] === '"'){ f += '"'; i++; } else q = false; } else f += ch; }
+      else if(ch === '"') q = true;
+      else if(ch === ','){ row.push(f); f = ''; }
+      else if(ch === '\n' || ch === '\r'){ if(ch === '\r' && text[i+1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; }
+      else f += ch;
+    }
+    if(f || row.length){ row.push(f); rows.push(row); }
+    return rows.filter(r => r.some(x => x.trim()));
+  }
+  function shareText(title, text){
+    if(window.AndroidApp && AndroidApp.share){ AndroidApp.share(title, text); return; }
+    // iPhone / web: the system share sheet (Messages, Mail, Files, Notes...)
+    if(navigator.share){ navigator.share({title, text}).catch(err => { if(err && err.name !== 'AbortError') copyFallback(text); }); return; }
+    copyFallback(text);
+  }
+  function copyFallback(text){
+    const box = $('copyBox'); box.value = text; box.hidden = false; box.scrollIntoView({block:'center'}); box.focus(); box.select();
+    try{ navigator.clipboard.writeText(text).then(() => toast('Copied'), () => {}); }catch(e){}
+  }
+  function csvText(){
+    const rows = [['Date','Clock In','Lunch Out','Lunch In','Clock Out','Breaks','Lunch (hrs)','Breaks (hrs)','Worked (hrs)','PTO (hrs)','Holiday (hrs)','Total (hrs)','Note']];
+    Object.keys(history).sort().forEach(iso => {
+      const info = dayInfo(iso), c = info.c, rec = info.rec;
+      const brk = (rec.breaks || []).map(b => `${b.s || ''}-${b.e || ''}`).join('; ');
+      rows.push([iso, ...FIELDS.map(f => c.err ? '' : fmtClock(c.r[f.id])), brk,
+        c.lunch != null && !c.err ? hrs(c.lunch) : '', c.breaks && !c.err ? hrs(c.breaks) : '', hrs(info.worked), hrs(info.pto), hrs(info.hol), hrs(info.total), rec.note || '']);
+    });
+    return rows.map(r => r.map(x => `"${String(x).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  }
+  function renderBackupNote(){
+    const last = cache.get('lastBackup', null);
+    const days = Object.keys(history).length;
+    $('lastBackup').textContent = last ? `Last backup: ${new Date(last).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}` : 'No backup yet.';
+    const stale = days >= 5 && (!last || Date.now() - last > 14*864e5);
+    const bb = $('backupBanner');
+    bb.hidden = !stale;
+    bb.textContent = last ? "It's been over two weeks since your last backup. Tap here to back up." : 'You have hours saved only on this phone. Tap here to make your first backup.';
+    if(window.AndroidApp && AndroidApp.saveBackupFile){
+      const la = cache.get('lastAutoBackup', 0), where = cache.get('lastAutoWhere', 'Downloads/DailyTime'), err = cache.get('autoErr', '');
+      const day = t => new Date(t).toLocaleDateString(undefined,{month:'short',day:'numeric'});
+      $('autoNote').textContent = !settings.autoBackup ? 'Automatic backups are off.'
+        : err ? `The last automatic backup didn't save: ${err}`
+        : la ? `Last backup file saved ${day(la)} to ${where}. These files stay even if the app is uninstalled.`
+        : 'The first backup file saves the next time you leave the app.';
+    }
+  }
+  $('restoreFile').addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if(!f) return;
+    const r = new FileReader();
+    r.onload = () => { $('restoreBox').value = String(r.result || ''); $('restoreBtn').click(); };
+    r.onerror = () => { $('ioNote').textContent = "Couldn't open that file."; };
+    r.readAsText(f);
+    e.target.value = '';
+  });
+  $('backupBanner').addEventListener('click', () => $('backupBtn').scrollIntoView({block:'center'}));
+  $('backupBtn').addEventListener('click', () => {
+    cache.set('history', history); cache.set('settings', settings);
+    const data = JSON.stringify({app:'daily-time', version:1, saved:new Date().toISOString(), settings, history});
+    shareText(`Daily Time backup ${todayIso()}`, data);
+    cache.set('lastBackup', Date.now()); renderBackupNote();
+  });
+  $('csvBtn').addEventListener('click', () => shareText(`Daily Time hours ${todayIso()}`, csvText()));
+  let restoreArm = null, restorePending = null;
+  function readRestore(text){
+    text = text.trim();
+    if(text.startsWith('{')){
+      const d = JSON.parse(text);
+      if(!d || d.app !== 'daily-time' || typeof d.history !== 'object') throw new Error('not a Daily Time backup');
+      const h = {};
+      for(const iso in d.history) if(validIso(iso) && d.history[iso] && typeof d.history[iso] === 'object') h[iso] = sanitizeRec(d.history[iso]);
+      return {history:h, settings: d.settings && typeof d.settings === 'object' ? Object.assign({}, defaults, d.settings) : null, full:true};
+    }
+    const rows = parseCSV(text);
+    const head = (rows.shift() || []).map(x => x.trim().toLowerCase());
+    const idx = name => head.findIndex(x => x.startsWith(name));
+    const iD = idx('date'), iIn = idx('clock in'), iLo = idx('lunch out'), iLi = idx('lunch in'), iOut = idx('clock out'), iP = idx('pto'), iB = head.indexOf('breaks'), iH = idx('holiday'), iN = head.indexOf('note');
+    if(iD < 0 || iIn < 0) throw new Error('no Date / Clock In columns');
+    const clean = v => String(v || '').replace(/\s*\(\+1\)/,'').trim();
+    const h = {};
+    for(const r of rows){
+      const iso = (r[iD] || '').trim(); if(!validIso(iso)) continue;
+      h[iso] = {in:clean(r[iIn]), lo:clean(r[iLo]), li:clean(r[iLi]), out:clean(r[iOut]),
+        pto: iP >= 0 && parseFloat(r[iP]) > 0 ? String(parseFloat(r[iP])) : '',
+        hol: iH >= 0 && parseFloat(r[iH]) > 0 ? String(parseFloat(r[iH])) : '',
+        note: iN >= 0 ? String(r[iN] || '').trim().slice(0, 200) : ''};
+      if(iB >= 0 && String(r[iB] || '').trim()){
+        const b = String(r[iB]).split(';').map(x => x.split('-')).filter(x => x[0] && x[0].trim()).map(([a, z]) => ({s:a.trim(), e:(z || '').trim()}));
+        if(b.length) h[iso].breaks = b;
+      }
+    }
+    return {history:h, settings:null, full:false};
+  }
+  function sanitizeRec(r){
+    const str = x => typeof x === 'string' || typeof x === 'number' ? String(x).slice(0,20) : '';
+    const o = {}; ['in','lo','li','out','pto','hol'].forEach(k => o[k] = str(r[k]));
+    o.note = typeof r.note === 'string' ? r.note.slice(0, 200) : '';
+    if(Array.isArray(r.breaks)){
+      const b = r.breaks.slice(0, 30).filter(x => x && typeof x === 'object').map(x => ({s:str(x.s), e:str(x.e)})).filter(x => x.s || x.e);
+      if(b.length) o.breaks = b;
+    }
+    return o;
+  }
+  $('restoreBtn').addEventListener('click', () => {
+    const btn = $('restoreBtn');
+    if(!restoreArm){
+      try{ restorePending = readRestore($('restoreBox').value); }
+      catch(e){ $('ioNote').textContent = "That doesn't look like a Daily Time backup. Paste the whole backup text, starting with {."; return; }
+      const n = Object.keys(restorePending.history).length;
+      if(!n){ $('ioNote').textContent = 'No days found in what you pasted.'; return; }
+      $('ioNote').textContent = restorePending.full
+        ? `This backup has ${n} day${n>1?'s':''} and your settings. Restoring replaces what's on this phone.`
+        : `This spreadsheet has ${n} day${n>1?'s':''}. Those days will be added or replaced.`;
+      btn.textContent = 'Tap again to restore'; btn.classList.add('danger');
+      restoreArm = setTimeout(() => { restoreArm = null; btn.textContent = 'Restore'; btn.classList.remove('danger'); }, 5000);
+      return;
+    }
+    clearTimeout(restoreArm); restoreArm = null; btn.textContent = 'Restore'; btn.classList.remove('danger');
+    const p = restorePending; restorePending = null;
+    if(p.full){ history = p.history; if(p.settings) settings = p.settings; }
+    else Object.assign(history, p.history);
+    if(settings.ppType !== 'semimonthly') settings.ppType = 'biweekly';
+    cache.set('history', history); cache.set('settings', settings);
+    fillSettingsInputs(); loadDay(curDate); renderBackupNote();
+    $('restoreBox').value = '';
+    { const n = Object.keys(p.history).length; $('ioNote').textContent = `Restored ${n} day${n>1?'s':''}.`; }
+    toast('Restored');
+  });
+
+  // ---------- app updates (Android app only) ----------
+  const APP = window.AndroidApp;
+  const canUpdate = !!(APP && APP.updateStatus);
+  let upd = null;
+  function renderUpdate(st){
+    upd = st || upd || {};
+    const b = $('updateBanner'), note = $('updNote');
+    $('updVer').textContent = upd.current || '?';
+    $('hdrVer').textContent = upd.current ? 'v' + upd.current : '';
+    $('updCheck').disabled = ['checking','available','downloading','installing'].includes(upd.state);
+    const when = upd.checkedAt ? ` Last checked ${new Date(upd.checkedAt).toLocaleString([], {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'})}.` : '';
+    const pct = upd.progress != null ? Math.round(upd.progress * 100) : 0;
+    const msgs = {
+      idle: 'Will check for updates when the app opens.' + when,
+      checking: 'Checking GitHub…',
+      current: `You're on the newest version.` + when,
+      available: `Version ${upd.latest} found. Downloading…`,
+      downloading: `Downloading ${upd.latest}… ${pct}%`,
+      ready: upd.message || `Version ${upd.latest} is downloaded and installs when you leave the app.`,
+      installing: `Installing ${upd.latest}…`,
+      updated: `Updated to ${upd.current}.` + when,
+      permission: upd.message || '',
+      error: upd.message || 'Something went wrong.',
+    };
+    note.textContent = msgs[upd.state] || '';
+    if(upd.state === 'updated' && !renderUpdate.told){ renderUpdate.told = true; setTimeout(() => toast(`Updated to v${upd.current}`), 400); }
+    const show = ['available','downloading','ready','permission','installing'].includes(upd.state) ||
+      (upd.state === 'error' && upd.latest && upd.latest !== upd.current);
+    b.hidden = !show;
+    if(show){
+      b.innerHTML = upd.state === 'available' || upd.state === 'downloading' ? `Downloading update <b>${upd.latest}</b>…${upd.state === 'downloading' ? ' ' + pct + '%' : ''}`
+        : upd.state === 'installing' ? `Installing update <b>${upd.latest}</b>…`
+        : upd.state === 'permission' ? `${upd.message || 'Allow Daily Time to install its own updates.'} <b>One time only — your hours stay.</b>`
+        : upd.state === 'error' ? `Update didn't finish: ${upd.message}${/tap here/i.test(upd.message || '') ? '' : ' Tap to try again.'}`
+        : upd.message ? `Update <b>${upd.latest}</b>: ${upd.message}`
+        : `Update <b>${upd.latest}</b> is downloaded and installs when you leave the app. Tap to install now.`;
+    }
+  }
+  if(canUpdate){
+    $('updCard').hidden = false;
+    window.dtUpdate = renderUpdate;
+    try{ renderUpdate(JSON.parse(APP.updateStatus())); }catch(e){}
+    $('updateBanner').addEventListener('click', () => {
+      if(!upd) return;
+      if(['available','downloading','installing'].includes(upd.state)) return;
+      // Save everything before Android replaces the app.
+      cache.set('history', history); cache.set('settings', settings);
+      if(upd.state === 'ready' || upd.state === 'permission') APP.installUpdate();
+      else APP.downloadUpdate();
+    });
+    $('updCheck').addEventListener('click', () => APP.checkForUpdate());
+  }
+
+  // ---------- automatic backup files (Android app only) ----------
+  const canFile = !!(APP && APP.saveBackupFile);
+  function saveBackupFile(manual){
+    if(!canFile) return false;
+    cache.set('history', history); cache.set('settings', settings);
+    const data = JSON.stringify({app:'daily-time', version:1, saved:new Date().toISOString(), settings, history});
+    let r;
+    try{ r = JSON.parse(APP.saveBackupFile(`daily-time-backup-${todayIso()}.json`, data)); }catch(e){ r = {ok:false, error:String(e && e.message || e)}; }
+    if(r.ok){
+      cache.set('lastAutoBackup', Date.now()); cache.set('lastAutoWhere', r.where); cache.set('lastBackup', Date.now()); cache.set('autoErr', '');
+      if(manual) toast('Saved to ' + r.where);
+    }else{
+      cache.set('autoErr', r.error || 'unknown problem');
+      if(manual) toast(r.error || "Couldn't save the file");
+    }
+    renderBackupNote();
+    return r.ok;
+  }
+  function autoBackup(){
+    if(!canFile || !settings.autoBackup || !Object.keys(history).length) return;
+    if(Date.now() - cache.get('lastAutoBackup', 0) > 7 * 864e5) saveBackupFile(false);
+  }
+  if(canFile){
+    $('autoBox').hidden = false;
+    $('setAutoBackup').checked = !!settings.autoBackup;
+    $('setAutoBackup').addEventListener('change', e => { settings.autoBackup = e.target.checked; cache.set('autoErr', ''); queueWrite('settings'); renderBackupNote(); });
+    $('saveFileBtn').addEventListener('click', () => saveBackupFile(true));
+    document.addEventListener('visibilitychange', () => { if(document.hidden) autoBackup(); });
+  }
+
+  // ---------- home-screen widget (Android app only) ----------
+  let lastWg = '';
+  function syncWidget(){
+    if(!APP || !APP.setWidget) return;
+    const today = todayIso();
+    const vals = curDate === today ? getVals() : (history[today] || {});
+    const c = compute(vals, true);
+    const period = PayPeriod.widgetPeriod(settings, today);
+    let tot = 0;
+    for(const iso of period.days){
+      tot += iso === today ? (c.err ? 0 : c.worked) + offMins(vals) : dayInfo(iso).total;
+    }
+    const leave = c.r.out == null && c.state !== 'lunch' ? leaveAt(c, vals, true) : null;
+    const next = FIELDS.find(f => !String(vals[f.id] || '').trim());
+    const status = {empty:'Not clocked in', working:'On the clock', lunch:'On lunch', break:'On break', done:'Clocked out', partial:'Missing a punch'}[c.state] || '';
+    const goalH = period.goalHours;
+    const snap = {day:today, periodEnd: period.periodEnd, worked: c.err ? 0 : c.worked, running: c.state === 'working', status,
+      leave: leave != null ? fmtClock(leave).replace(' (+1)', '') : '',
+      periodLeft: goalH * 60 - tot, goal: PayPeriod.isSemi(settings) ? goalLabel(goalH) : String(settings.ppHours),
+      punch: next ? `Punch: ${next.label}` : 'Punch', brk: c.state === 'break' ? 'End break' : 'Start break'};
+    const key = JSON.stringify(snap);
+    if(key === lastWg) return;
+    lastWg = key;
+    snap.at = Date.now();
+    try{ APP.setWidget(JSON.stringify(snap)); }catch(e){}
+  }
+
+  // ---------- reminders (Android notifications) ----------
+  const canNotify = !!(APP && APP.setReminders);
+  let lastRem = null;
+  function scheduleReminders(){
+    syncWidget();   // the home-screen widget follows the same changes
+    if(!canNotify) return;
+    const list = [];
+    const today = todayIso();
+    if(settings.remOn){
+      const vals = curDate === today ? getVals() : (history[today] || {});
+      const c = compute(vals, true);
+      const base = parseIso(today).getTime();
+      const at = m => base + Math.round(m * 60000);
+      if(!c.err && c.r.in != null && c.r.out == null){
+        // While on lunch the leave time keeps moving; it's rescheduled when you punch back in.
+        const leave = c.state === 'lunch' ? null : leaveAt(c, vals, true);
+        if(leave != null){
+          if(settings.remLeave) list.push({at:at(leave), title:'Time to clock out',
+            text:`You've reached a ${settings.target}-hour day.`, action:'out', actionLabel:'Clock out'});
+          if(settings.remForgotOn && +settings.remForgot > 0) list.push({at:at(leave + +settings.remForgot), title:'Still on the clock?',
+            text:`You're ${settings.remForgot} min past a normal day. Forgot to clock out?`, action:'out', actionLabel:'Clock out'});
+        }
+        const ob = c.breakList.find(b => b.open && b.s != null);
+        if(ob && settings.remBreakOn && +settings.remBreak > 0) list.push({at:at(ob.s + +settings.remBreak), title:`Break: ${settings.remBreak} minutes`,
+          text:`Your break has reached ${settings.remBreak} minutes.`, action:'break', actionLabel:'End break'});
+      }
+    }
+    const json = JSON.stringify(list.filter(r => r.at > Date.now() + 5000));
+    if(json === lastRem) return;
+    lastRem = json;
+    try{ APP.setReminders(json); }catch(e){}
+  }
+  function remNoteText(){
+    if(!settings.remOn) return '';
+    return APP.notifyAllowed && !APP.notifyAllowed()
+      ? 'Notifications are turned off for Daily Time. Turn them on in Android Settings → Apps → Daily Time → Notifications.'
+      : 'Reminders are on. They come even when the app is closed.';
+  }
+  if(canNotify){
+    $('remBox').hidden = false;
+    $('setRemOn').addEventListener('change', e => {
+      if(e.target.checked){ e.target.checked = false; APP.requestNotify(); return; }   // Android answers via dtNotify
+      settings.remOn = false; queueWrite('settings'); fillSettingsInputs(); $('remNote').textContent = ''; scheduleReminders();
+    });
+    window.dtNotify = ok => {
+      settings.remOn = !!ok; queueWrite('settings'); fillSettingsInputs();
+      $('remNote').textContent = ok ? remNoteText() : 'Daily Time isn\'t allowed to send notifications. Turn them on in Android Settings → Apps → Daily Time → Notifications, then tick this again.';
+      scheduleReminders();
+    };
+    document.addEventListener('visibilitychange', () => { if(document.hidden) scheduleReminders(); });
+  }
+
+  // ---------- home-screen shortcuts & notification buttons ----------
+  let lastSc = '';
+  function syncShortcuts(){
+    if(!APP || !APP.setShortcuts) return;
+    const today = todayIso();
+    const v = curDate === today ? getVals() : (history[today] || {});
+    const next = FIELDS.find(f => !String(v[f.id] || '').trim());
+    const onBrk = (v.breaks || []).some(b => String(b.s || '').trim() && !String(b.e || '').trim());
+    const pl = next ? `Punch: ${next.label}` : 'Punch', bl = onBrk ? 'End break' : 'Start break';
+    if(pl + '|' + bl === lastSc) return;
+    lastSc = pl + '|' + bl;
+    try{ APP.setShortcuts(pl, bl); }catch(e){}
+  }
+  window.dtAction = a => {
+    if(a === 'punch') punch();
+    else if(a === 'break') toggleBreak();
+    else if(a === 'out') clockOut();
+  };
+
+  // ---------- web version (iPhone and browsers) ----------
+  if(!window.AndroidApp){
+    if(window.DT_WEB_VERSION) $('hdrVer').textContent = 'web ' + window.DT_WEB_VERSION;
+    $('longPressTip').hidden = true;
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const standalone = navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+    $('installBanner').hidden = !(ios && !standalone && window.DT_WEB_VERSION);
+    // Ask the browser not to clear saved hours when space runs low.
+    try{ navigator.storage && navigator.storage.persist && navigator.storage.persist(); }catch(e){}
+  }
+
+  let tt; function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('show'), 1600); }
+
+  let lastDay = todayIso();
+  function tick(){
+    $('clock').textContent = new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+    const t = todayIso();
+    if(t !== lastDay){ lastDay = t; if(!viewPP) loadDay(t); return; }
+    render();
+  }
+  fillSettingsInputs();
+  loadDay(todayIso());
+  if(canNotify){ $('remNote').textContent = remNoteText(); scheduleReminders(); }
+  autoBackup();
+  tick(); setInterval(tick, 5000);
+  renderBackupNote();
+})();
+</script>
+<script>
+if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+</script>
+</body>
+</html>
